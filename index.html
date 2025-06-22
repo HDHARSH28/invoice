@@ -3,42 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invoice Generator Pro</title>
+    <title>Estimate Generator Pro</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <header class="header">
-            <h1>Invoice Generator Pro</h1>
+            <h1>Estimate Generator Pro</h1>
             <nav class="nav-tabs">
-                <button class="tab-btn active" data-tab="create">Create Invoice</button>
-                <button class="tab-btn" data-tab="history">Invoice History</button>
+                <button class="tab-btn active" data-tab="create">Create Estimate</button>
+                <button class="tab-btn" data-tab="history">Estimate History</button>
             </nav>
         </header>
 
-        <!-- Create Invoice Tab -->
+        <!-- Create Estimate Tab -->
         <div id="create-tab" class="tab-content active">
-            <div class="invoice-form">
+            <div class="estimate-form">
                 <div class="form-section">
                     <h2>Business Information</h2>
                     <div class="form-row">
                         <div class="form-group">
                             <label for="businessName">Business Name</label>
-                            <input type="text" id="businessName" placeholder="Your Business Name">
+                            <input type="text" id="businessName" placeholder="Your Business Name" value="New Patel Tiles & Sanitary">
                         </div>
                         <div class="form-group">
                             <label for="businessEmail">Email</label>
-                            <input type="email" id="businessEmail" placeholder="business@example.com">
+                            <input type="email" id="businessEmail" placeholder="business@example.com" value="newpateltiles@gmail.com">
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label for="businessPhone">Phone</label>
-                            <input type="tel" id="businessPhone" placeholder="+1 (555) 123-4567">
+                            <input type="tel" id="businessPhone" placeholder="+1 (555) 123-4567" value="9370912831">
                         </div>
                         <div class="form-group">
                             <label for="businessAddress">Address</label>
-                            <textarea id="businessAddress" placeholder="Business Address"></textarea>
+                            <textarea id="businessAddress" placeholder="Business Address">Shop No. 1, Sathe Wasti Dhanori-Lohegaon Rd, Near Bharat petroleum, Dhanori, Pune - 411047</textarea>
                         </div>
                     </div>
                 </div>
@@ -48,18 +48,14 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="clientName">Client Name</label>
-                            <input type="text" id="clientName" placeholder="Client Name">
+                            <input type="text" id="clientName" placeholder="Client Name" value="Local Customer">
                         </div>
-                        <div class="form-group">
-                            <label for="clientEmail">Client Email</label>
-                            <input type="email" id="clientEmail" placeholder="client@example.com">
-                        </div>
-                    </div>
-                    <div class="form-row">
                         <div class="form-group">
                             <label for="clientPhone">Client Phone</label>
                             <input type="tel" id="clientPhone" placeholder="+1 (555) 987-6543">
                         </div>
+                    </div>
+                    <div class="form-row">
                         <div class="form-group">
                             <label for="clientAddress">Client Address</label>
                             <textarea id="clientAddress" placeholder="Client Address"></textarea>
@@ -68,25 +64,25 @@
                 </div>
 
                 <div class="form-section">
-                    <h2>Invoice Details</h2>
+                    <h2>Estimate Details</h2>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="invoiceNumber">Invoice Number</label>
-                            <input type="text" id="invoiceNumber" readonly>
+                            <label for="estimateNumber">Estimate Number</label>
+                            <input type="text" id="estimateNumber">
                         </div>
                         <div class="form-group">
-                            <label for="invoiceDate">Invoice Date</label>
-                            <input type="date" id="invoiceDate">
+                            <label for="estimateDate">Estimate Date</label>
+                            <input type="date" id="estimateDate">
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label for="dueDate">Due Date</label>
-                            <input type="date" id="dueDate">
-                        </div>
-                        <div class="form-group">
                             <label for="taxRate">Tax Rate (%)</label>
                             <input type="number" id="taxRate" placeholder="0" min="0" max="100" step="0.01">
+                        </div>
+                        <div class="form-group">
+                            <label for="discountAmountInput">Discount Amount</label>
+                            <input type="number" id="discountAmountInput" placeholder="0.00" min="0" step="0.01" value="0">
                         </div>
                     </div>
                 </div>
@@ -96,8 +92,8 @@
                     <div class="items-container">
                         <div class="items-header">
                             <span>Description</span>
-                            <span>Quantity</span>
-                            <span>Rate</span>
+                            <span>Qty</span>
+                            <span>Unit Cost</span>
                             <span>Amount</span>
                             <span>Action</span>
                         </div>
@@ -112,22 +108,26 @@
                     <div class="invoice-summary">
                         <div class="summary-row">
                             <span>Subtotal:</span>
-                            <span id="subtotal">$0.00</span>
+                            <span id="subtotal">Rs. 0.00</span>
                         </div>
                         <div class="summary-row">
                             <span>Tax:</span>
-                            <span id="taxAmount">$0.00</span>
+                            <span id="taxAmount">Rs. 0.00</span>
+                        </div>
+                        <div class="summary-row">
+                            <span>Discount:</span>
+                            <span id="discountAmount">Rs. 0.00</span>
                         </div>
                         <div class="summary-row total">
                             <span>Total:</span>
-                            <span id="total">$0.00</span>
+                            <span id="total">Rs. 0.00</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="form-actions">
                     <button type="button" id="previewBtn" class="btn btn-secondary">Preview</button>
-                    <button type="button" id="saveBtn" class="btn btn-primary">Save Invoice</button>
+                    <button type="button" id="saveBtn" class="btn btn-primary">Save Estimate</button>
                     <button type="button" id="clearBtn" class="btn btn-outline">Clear Form</button>
                 </div>
             </div>
@@ -136,40 +136,44 @@
         <!-- History Tab -->
         <div id="history-tab" class="tab-content">
             <div class="history-header">
-                <h2>Invoice History</h2>
+                <h2>Estimate History</h2>
                 <div class="history-actions">
-                    <input type="text" id="searchInput" placeholder="Search invoices..." class="search-input">
-                    <button id="exportBtn" class="btn btn-secondary">Export All</button>
+                    <input type="text" id="searchInput" placeholder="Search estimates..." class="search-input">
+                    <button id="exportBtn" class="btn btn-secondary">Export to Excel</button>
                 </div>
             </div>
             <div class="history-stats">
                 <div class="stat-card">
-                    <h3 id="totalInvoices">0</h3>
-                    <p>Total Invoices</p>
+                    <h3 id="totalEstimates">0</h3>
+                    <p>Total Estimates</p>
                 </div>
                 <div class="stat-card">
-                    <h3 id="totalRevenue">$0.00</h3>
+                    <h3 id="totalRevenue">Rs. 0.00</h3>
                     <p>Total Revenue</p>
                 </div>
                 <div class="stat-card">
-                    <h3 id="avgInvoice">$0.00</h3>
-                    <p>Average Invoice</p>
+                    <h3 id="thisMonthRevenue">Rs. 0.00</h3>
+                    <p>This Month</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="thisYearRevenue">Rs. 0.00</h3>
+                    <p>This Year</p>
                 </div>
             </div>
             <div id="historyList" class="history-list">
-                <!-- Invoice history will be displayed here -->
+                <!-- Estimate history will be displayed here -->
             </div>
         </div>
 
-        <!-- Invoice Preview Modal -->
+        <!-- Estimate Preview Modal -->
         <div id="previewModal" class="modal">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h2>Invoice Preview</h2>
+                    <h2>Estimate Preview</h2>
                     <span class="close">&times;</span>
                 </div>
-                <div id="invoicePreview" class="invoice-preview">
-                    <!-- Invoice preview will be generated here -->
+                <div id="estimatePreview" class="estimate-preview">
+                    <!-- Estimate preview will be generated here -->
                 </div>
                 <div class="modal-actions">
                     <button id="printBtn" class="btn btn-primary">Print</button>
@@ -182,15 +186,16 @@
         <div id="saveSuccessModal" class="modal">
             <div class="modal-content save-success-modal">
                 <div class="modal-header">
-                    <h2>Invoice Saved Successfully!</h2>
+                    <h2>Estimate Saved Successfully!</h2>
                     <span class="close-success">&times;</span>
                 </div>
                 <div class="save-success-content">
                     <div class="success-icon">✓</div>
-                    <p>Your invoice has been saved and Excel file has been downloaded automatically.</p>
+                    <p>Your estimate has been saved and PDF file has been downloaded automatically.</p>
+                    <p><strong>Estimate Number:</strong> <span id="savedEstimateNumber"></span></p>
                     <div class="success-actions">
-                        <button id="printInvoiceBtn" class="btn btn-primary">Print Invoice</button>
-                        <button id="createNewBtn" class="btn btn-secondary">Create New Invoice</button>
+                        <button id="printInvoiceBtn" class="btn btn-primary">Print Estimate</button>
+                        <button id="createNewBtn" class="btn btn-secondary">Create New Estimate</button>
                         <button id="viewHistoryBtn" class="btn btn-outline">View History</button>
                     </div>
                 </div>
@@ -199,6 +204,8 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
