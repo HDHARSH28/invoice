@@ -1,14 +1,35 @@
-class InvoiceGenerator {
+class EstimateGenerator {
     constructor() {
-        this.invoices = JSON.parse(localStorage.getItem('invoices')) || [];
-        this.currentInvoice = {};
+        this.estimates = JSON.parse(localStorage.getItem('estimates')) || [];
+        this.currentEstimate = {};
         this.itemCounter = 0;
         
+        this.checkLibraries();
         this.initializeEventListeners();
-        this.generateInvoiceNumber();
+        this.generateEstimateNumber();
         this.setDefaultDates();
         this.addInitialItem();
         this.updateHistoryDisplay();
+    }
+
+    checkLibraries() {
+        // Check if required libraries are loaded
+        const libraries = {
+            'XLSX': typeof XLSX !== 'undefined',
+            'jsPDF': typeof window.jspdf !== 'undefined',
+            'html2canvas': typeof html2canvas !== 'undefined'
+        };
+        
+        console.log('Library status:', libraries);
+        
+        // Show warning if libraries are missing
+        const missingLibraries = Object.entries(libraries)
+            .filter(([name, loaded]) => !loaded)
+            .map(([name]) => name);
+            
+        if (missingLibraries.length > 0) {
+            console.warn('Missing libraries:', missingLibraries);
+        }
     }
 
     initializeEventListeners() {
@@ -19,27 +40,30 @@ class InvoiceGenerator {
 
         // Form interactions
         document.getElementById('addItemBtn').addEventListener('click', () => this.addItem());
-        document.getElementById('previewBtn').addEventListener('click', () => this.previewInvoice());
-        document.getElementById('saveBtn').addEventListener('click', () => this.saveInvoice());
+        document.getElementById('previewBtn').addEventListener('click', () => this.previewEstimate());
+        document.getElementById('saveBtn').addEventListener('click', () => this.saveEstimate());
         document.getElementById('clearBtn').addEventListener('click', () => this.clearForm());
 
         // Modal interactions
         document.querySelector('.close').addEventListener('click', () => this.closeModal());
         document.querySelector('.close-success').addEventListener('click', () => this.closeSaveSuccessModal());
-        document.getElementById('printBtn').addEventListener('click', () => this.printInvoice());
+        document.getElementById('printBtn').addEventListener('click', () => this.printEstimate());
         document.getElementById('downloadBtn').addEventListener('click', () => this.downloadPDF());
 
         // Save success modal actions
-        document.getElementById('printInvoiceBtn').addEventListener('click', () => this.printSavedInvoice());
-        document.getElementById('createNewBtn').addEventListener('click', () => this.createNewInvoice());
+        document.getElementById('printInvoiceBtn').addEventListener('click', () => this.printSavedEstimate());
+        document.getElementById('createNewBtn').addEventListener('click', () => this.createNewEstimate());
         document.getElementById('viewHistoryBtn').addEventListener('click', () => this.viewHistory());
 
         // History interactions
-        document.getElementById('searchInput').addEventListener('input', (e) => this.searchInvoices(e.target.value));
-        document.getElementById('exportBtn').addEventListener('click', () => this.exportAllInvoices());
+        document.getElementById('searchInput').addEventListener('input', (e) => this.searchEstimates(e.target.value));
+        document.getElementById('exportBtn').addEventListener('click', () => this.exportAllEstimates());
 
         // Tax rate change
         document.getElementById('taxRate').addEventListener('input', () => this.calculateTotals());
+        
+        // Discount rate change
+        document.getElementById('discountAmountInput').addEventListener('input', () => this.calculateTotals());
 
         // Close modal when clicking outside
         window.addEventListener('click', (e) => {
@@ -64,20 +88,34 @@ class InvoiceGenerator {
         }
     }
 
-    generateInvoiceNumber() {
-        const lastInvoice = this.invoices[this.invoices.length - 1];
-        const lastNumber = lastInvoice ? parseInt(lastInvoice.invoiceNumber.replace('INV-', '')) : 0;
-        const newNumber = (lastNumber + 1).toString().padStart(4, '0');
-        document.getElementById('invoiceNumber').value = `INV-${newNumber}`;
+    generateEstimateNumber() {
+        // Find the highest estimate number
+        let maxNumber = 0;
+        this.estimates.forEach(estimate => {
+            const number = parseInt(estimate.estimateNumber);
+            if (!isNaN(number) && number > maxNumber) {
+                maxNumber = number;
+            }
+        });
+        
+        // Get the next number
+        const nextNumber = maxNumber + 1;
+        
+        // Determine the number of digits needed
+        let digitCount = 4; // Start with 4 digits
+        if (nextNumber > 9999) {
+            digitCount = nextNumber.toString().length;
+        }
+        
+        // Format the estimate number
+        const estimateNumber = nextNumber.toString().padStart(digitCount, '0');
+        
+        document.getElementById('estimateNumber').value = estimateNumber;
     }
 
     setDefaultDates() {
         const today = new Date();
-        const dueDate = new Date(today);
-        dueDate.setDate(today.getDate() + 30);
-
-        document.getElementById('invoiceDate').value = today.toISOString().split('T')[0];
-        document.getElementById('dueDate').value = dueDate.toISOString().split('T')[0];
+        document.getElementById('estimateDate').value = today.toISOString().split('T')[0];
     }
 
     addItem() {
@@ -92,8 +130,8 @@ class InvoiceGenerator {
             <input type="text" placeholder="Item description" class="item-description" required>
             <input type="number" placeholder="1" class="item-quantity" min="1" value="1" required>
             <input type="number" placeholder="0.00" class="item-rate" min="0" step="0.01" required>
-            <span class="item-amount">$0.00</span>
-            <button type="button" class="remove-item" onclick="invoiceGen.removeItem(${this.itemCounter})">Remove</button>
+            <span class="item-amount">Rs. 0.00</span>
+            <button type="button" class="remove-item" onclick="estimateGen.removeItem(${this.itemCounter})">Remove</button>
         `;
         
         itemsContainer.appendChild(itemRow);
@@ -125,7 +163,7 @@ class InvoiceGenerator {
         const rate = parseFloat(itemRow.querySelector('.item-rate').value) || 0;
         const amount = quantity * rate;
         
-        itemRow.querySelector('.item-amount').textContent = `$${amount.toFixed(2)}`;
+        itemRow.querySelector('.item-amount').textContent = `Rs. ${amount.toFixed(2)}`;
         this.calculateTotals();
     }
 
@@ -141,11 +179,15 @@ class InvoiceGenerator {
         
         const taxRate = parseFloat(document.getElementById('taxRate').value) || 0;
         const taxAmount = (subtotal * taxRate) / 100;
-        const total = subtotal + taxAmount;
         
-        document.getElementById('subtotal').textContent = `$${subtotal.toFixed(2)}`;
-        document.getElementById('taxAmount').textContent = `$${taxAmount.toFixed(2)}`;
-        document.getElementById('total').textContent = `$${total.toFixed(2)}`;
+        const discountAmount = parseFloat(document.getElementById('discountAmountInput').value) || 0;
+        
+        const total = subtotal + taxAmount - discountAmount;
+        
+        document.getElementById('subtotal').textContent = `Rs. ${subtotal.toFixed(2)}`;
+        document.getElementById('taxAmount').textContent = `Rs. ${taxAmount.toFixed(2)}`;
+        document.getElementById('discountAmount').textContent = `Rs. ${discountAmount.toFixed(2)}`;
+        document.getElementById('total').textContent = `Rs. ${total.toFixed(2)}`;
     }
 
     collectFormData() {
@@ -170,12 +212,14 @@ class InvoiceGenerator {
         const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
         const taxRate = parseFloat(document.getElementById('taxRate').value) || 0;
         const taxAmount = (subtotal * taxRate) / 100;
-        const total = subtotal + taxAmount;
+        
+        const discountAmount = parseFloat(document.getElementById('discountAmountInput').value) || 0;
+        
+        const total = subtotal + taxAmount - discountAmount;
         
         return {
-            invoiceNumber: document.getElementById('invoiceNumber').value,
-            invoiceDate: document.getElementById('invoiceDate').value,
-            dueDate: document.getElementById('dueDate').value,
+            estimateNumber: document.getElementById('estimateNumber').value,
+            estimateDate: document.getElementById('estimateDate').value,
             businessInfo: {
                 name: document.getElementById('businessName').value,
                 email: document.getElementById('businessEmail').value,
@@ -184,7 +228,6 @@ class InvoiceGenerator {
             },
             clientInfo: {
                 name: document.getElementById('clientName').value,
-                email: document.getElementById('clientEmail').value,
                 phone: document.getElementById('clientPhone').value,
                 address: document.getElementById('clientAddress').value
             },
@@ -192,6 +235,7 @@ class InvoiceGenerator {
             subtotal,
             taxRate,
             taxAmount,
+            discountAmount,
             total,
             createdAt: new Date().toISOString()
         };
@@ -202,14 +246,13 @@ class InvoiceGenerator {
         
         if (!data.businessInfo.name) errors.push('Business name is required');
         if (!data.clientInfo.name) errors.push('Client name is required');
-        if (!data.invoiceDate) errors.push('Invoice date is required');
-        if (!data.dueDate) errors.push('Due date is required');
+        if (!data.estimateDate) errors.push('Estimate date is required');
         if (data.items.length === 0) errors.push('At least one item is required');
         
         return errors;
     }
 
-    previewInvoice() {
+    previewEstimate() {
         const data = this.collectFormData();
         const errors = this.validateForm(data);
         
@@ -218,84 +261,115 @@ class InvoiceGenerator {
             return;
         }
         
-        this.currentInvoice = data;
-        this.generateInvoicePreview(data);
+        this.currentEstimate = data;
+        this.generateEstimatePreview(data);
         document.getElementById('previewModal').style.display = 'block';
     }
 
-    generateInvoicePreview(data) {
-        const preview = document.getElementById('invoicePreview');
+    generateEstimatePreview(data) {
+        const preview = document.getElementById('estimatePreview');
+        const emptyRows = Math.max(0, 15 - data.items.length);
         
         preview.innerHTML = `
-            <div class="invoice-header">
-                <div>
-                    <h1 class="invoice-title">INVOICE</h1>
+        <div class="print-template">
+            <header class="print-header">
+                <div class="header-left">
+                    <h1 class="main-title">ESTIMATE</h1>
+                    <div class="company-details">
+                        <p><strong>${data.businessInfo.name}</strong></p>
+                        <p>${data.businessInfo.address.replace(/\n/g, '<br>')}</p>
+                        <p>${data.businessInfo.phone}</p>
+                        <p>${data.businessInfo.email}</p>
                 </div>
-                <div class="invoice-info">
-                    <p><strong>Invoice #:</strong> ${data.invoiceNumber}</p>
-                    <p><strong>Date:</strong> ${this.formatDate(data.invoiceDate)}</p>
-                    <p><strong>Due Date:</strong> ${this.formatDate(data.dueDate)}</p>
+                </div>
+                <div class="header-right">
+                    <div class="company-logo">
+                        <img src="logo.png" alt="New Patel Tiles & Sanitary Logo">
+                    </div>
+                    <div class="bill-to">
+                        <h3>BILL TO</h3>
+                        <p>${data.clientInfo.name}</p>
+                        <p>${data.clientInfo.address ? data.clientInfo.address.replace(/\n/g, '<br>') : ''}</p>
+                        <p>${data.clientInfo.phone || ''}</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="estimate-meta">
+                <div class="meta-item">
+                    <span>ESTIMATE NO</span>
+                    <span>${data.estimateNumber}</span>
+                </div>
+                <div class="meta-item">
+                    <span>DATE</span>
+                    <span>${this.formatDate(data.estimateDate)}</span>
                 </div>
             </div>
             
-            <div class="invoice-parties">
-                <div class="party-info">
-                    <h3>From:</h3>
-                    <p><strong>${data.businessInfo.name}</strong></p>
-                    ${data.businessInfo.email ? `<p>${data.businessInfo.email}</p>` : ''}
-                    ${data.businessInfo.phone ? `<p>${data.businessInfo.phone}</p>` : ''}
-                    ${data.businessInfo.address ? `<p>${data.businessInfo.address.replace(/\n/g, '<br>')}</p>` : ''}
-                </div>
-                <div class="party-info">
-                    <h3>To:</h3>
-                    <p><strong>${data.clientInfo.name}</strong></p>
-                    ${data.clientInfo.email ? `<p>${data.clientInfo.email}</p>` : ''}
-                    ${data.clientInfo.phone ? `<p>${data.clientInfo.phone}</p>` : ''}
-                    ${data.clientInfo.address ? `<p>${data.clientInfo.address.replace(/\n/g, '<br>')}</p>` : ''}
-                </div>
-            </div>
-            
-            <table class="invoice-table">
+            <table class="items-table">
                 <thead>
                     <tr>
-                        <th>Description</th>
-                        <th class="text-right">Quantity</th>
-                        <th class="text-right">Rate</th>
-                        <th class="text-right">Amount</th>
+                        <th class="qty-col">Qty</th>
+                        <th class="desc-col">Description</th>
+                        <th class="unit-col">Unit Cost</th>
+                        <th class="amount-col">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${data.items.map(item => `
                         <tr>
+                            <td>${item.quantity}</td>
                             <td>${item.description}</td>
-                            <td class="text-right">${item.quantity}</td>
-                            <td class="text-right">$${item.rate.toFixed(2)}</td>
-                            <td class="text-right">$${item.amount.toFixed(2)}</td>
+                            <td>Rs. ${item.rate.toFixed(2)}</td>
+                            <td>Rs. ${item.amount.toFixed(2)}</td>
+                        </tr>
+                    `).join('')}
+                    ${Array(emptyRows).fill(0).map(() => `
+                        <tr>
+                            <td>&nbsp;</td>
+                            <td>&nbsp;</td>
+                            <td>&nbsp;</td>
+                            <td>&nbsp;</td>
                         </tr>
                     `).join('')}
                 </tbody>
             </table>
             
-            <div class="invoice-totals">
-                <div class="total-row">
-                    <span>Subtotal:</span>
-                    <span>$${data.subtotal.toFixed(2)}</span>
-                </div>
-                ${data.taxRate > 0 ? `
-                    <div class="total-row">
-                        <span>Tax (${data.taxRate}%):</span>
-                        <span>$${data.taxAmount.toFixed(2)}</span>
+            <footer class="print-footer">
+                <div class="footer-left">
+                    <div class="terms">
+                        <h4>TERMS & CONDITIONS</h4>
+                        <p>Your terms and conditions can be added here.</p>
                     </div>
-                ` : ''}
-                <div class="total-row final">
-                    <span>Total:</span>
-                    <span>$${data.total.toFixed(2)}</span>
                 </div>
-            </div>
-        `;
+                <div class="footer-right">
+                    <div class="totals">
+                        <div class="total-row">
+                            <span>SUB TOTAL</span>
+                            <span>Rs. ${data.subtotal.toFixed(2)}</span>
+                        </div>
+                        ${data.discountAmount > 0 ? `
+                            <div class="total-row">
+                                <span>DISCOUNT</span>
+                                <span>Rs. ${data.discountAmount.toFixed(2)}</span>
+                            </div>
+                        ` : ''}
+                        <div class="total-row">
+                            <span>TAX</span>
+                            <span>Rs. ${data.taxAmount.toFixed(2)}</span>
+                        </div>
+                        <div class="total-row grand-total">
+                            <span>TOTAL</span>
+                            <span>Rs. ${data.total.toFixed(2)}</span>
+                        </div>
+                    </div>
+                </div>
+            </footer>
+        </div>
+    `;
     }
 
-    async saveInvoice() {
+    async saveEstimate() {
         const data = this.collectFormData();
         const errors = this.validateForm(data);
         
@@ -304,145 +378,259 @@ class InvoiceGenerator {
             return;
         }
         
-        // Check if invoice number already exists
-        const existingInvoice = this.invoices.find(inv => inv.invoiceNumber === data.invoiceNumber);
-        if (existingInvoice) {
-            if (!confirm('An invoice with this number already exists. Do you want to update it?')) {
+        if (this.isEditMode) {
+            // Update existing estimate
+            const index = this.estimates.findIndex(est => est.estimateNumber === this.editingEstimateNumber);
+            if (index !== -1) {
+                this.estimates[index] = data;
+                localStorage.setItem('estimates', JSON.stringify(this.estimates));
+                this.currentEstimate = data;
+                
+                // Auto-generate and download PDF file
+                await this.generatePDFFile(data);
+                
+                // Update Excel structure with all estimates
+                await this.updateExcelStructure();
+                
+                // Show success modal
+                document.getElementById('saveSuccessModal').style.display = 'block';
+                document.getElementById('savedEstimateNumber').textContent = data.estimateNumber;
+                
+                // Reset edit mode
+                this.isEditMode = false;
+                this.editingEstimateNumber = null;
+                
+                // Reset button text
+                const saveBtn = document.getElementById('saveBtn');
+                saveBtn.textContent = 'Save Estimate';
+            }
+        } else {
+        // Check if estimate number already exists
+        const existingEstimate = this.estimates.find(est => est.estimateNumber === data.estimateNumber);
+        if (existingEstimate) {
+            if (!confirm('An estimate with this number already exists. Do you want to update it?')) {
                 return;
             }
-            // Update existing invoice
-            const index = this.invoices.findIndex(inv => inv.invoiceNumber === data.invoiceNumber);
-            this.invoices[index] = data;
+            // Update existing estimate
+            const index = this.estimates.findIndex(est => est.estimateNumber === data.estimateNumber);
+            this.estimates[index] = data;
         } else {
-            // Add new invoice
-            this.invoices.push(data);
+            // Add new estimate
+            this.estimates.push(data);
         }
         
-        localStorage.setItem('invoices', JSON.stringify(this.invoices));
-        this.currentInvoice = data;
+        localStorage.setItem('estimates', JSON.stringify(this.estimates));
+        this.currentEstimate = data;
         
-        // Auto-generate and download Excel file
-        await this.generateExcelFile(data);
+            // Auto-generate and download PDF file
+            await this.generatePDFFile(data);
+            
+            // Update Excel structure with all estimates
+            await this.updateExcelStructure();
         
         // Show success modal
         document.getElementById('saveSuccessModal').style.display = 'block';
-    }
-
-    async generateExcelFile(invoiceData) {
-        try {
-            // Create a new workbook
-            const wb = XLSX.utils.book_new();
-            
-            // Create invoice summary sheet
-            const summaryData = [
-                ['Invoice Details'],
-                ['Invoice Number', invoiceData.invoiceNumber],
-                ['Invoice Date', this.formatDate(invoiceData.invoiceDate)],
-                ['Due Date', this.formatDate(invoiceData.dueDate)],
-                [''],
-                ['Business Information'],
-                ['Business Name', invoiceData.businessInfo.name],
-                ['Email', invoiceData.businessInfo.email],
-                ['Phone', invoiceData.businessInfo.phone],
-                ['Address', invoiceData.businessInfo.address],
-                [''],
-                ['Client Information'],
-                ['Client Name', invoiceData.clientInfo.name],
-                ['Email', invoiceData.clientInfo.email],
-                ['Phone', invoiceData.clientInfo.phone],
-                ['Address', invoiceData.clientInfo.address],
-                [''],
-                ['Invoice Summary'],
-                ['Subtotal', `$${invoiceData.subtotal.toFixed(2)}`],
-                ['Tax Rate', `${invoiceData.taxRate}%`],
-                ['Tax Amount', `$${invoiceData.taxAmount.toFixed(2)}`],
-                ['Total Amount', `$${invoiceData.total.toFixed(2)}`]
-            ];
-            
-            const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
-            XLSX.utils.book_append_sheet(wb, summaryWs, 'Invoice Summary');
-            
-            // Create items detail sheet
-            const itemsData = [
-                ['Item Description', 'Quantity', 'Rate', 'Total Amount']
-            ];
-            
-            invoiceData.items.forEach(item => {
-                itemsData.push([
-                    item.description,
-                    item.quantity,
-                    `$${item.rate.toFixed(2)}`,
-                    `$${item.amount.toFixed(2)}`
-                ]);
-            });
-            
-            // Add totals row
-            itemsData.push(['', '', 'Subtotal:', `$${invoiceData.subtotal.toFixed(2)}`]);
-            if (invoiceData.taxRate > 0) {
-                itemsData.push(['', '', `Tax (${invoiceData.taxRate}%):`, `$${invoiceData.taxAmount.toFixed(2)}`]);
-            }
-            itemsData.push(['', '', 'Total:', `$${invoiceData.total.toFixed(2)}`]);
-            
-            const itemsWs = XLSX.utils.aoa_to_sheet(itemsData);
-            XLSX.utils.book_append_sheet(wb, itemsWs, 'Items Detail');
-            
-            // Generate filename
-            const filename = `Invoice_${invoiceData.invoiceNumber}_${invoiceData.invoiceDate}.xlsx`;
-            
-            // Write and download the file
-            XLSX.writeFile(wb, filename);
-            
-        } catch (error) {
-            console.error('Error generating Excel file:', error);
-            alert('There was an error generating the Excel file, but your invoice has been saved successfully.');
+        document.getElementById('savedEstimateNumber').textContent = data.estimateNumber;
         }
     }
 
-    printSavedInvoice() {
-        this.generateInvoicePreview(this.currentInvoice);
+    async generatePDFFile(estimateData) {
+        try {
+            // Check if required libraries are loaded
+            if (typeof window.jspdf === 'undefined') {
+                throw new Error('jsPDF library not loaded');
+            }
+            
+            if (typeof html2canvas === 'undefined') {
+                throw new Error('html2canvas library not loaded');
+            }
+            
+            // Show loading indicator
+            const saveBtn = document.getElementById('saveBtn');
+            const originalText = saveBtn.textContent;
+            saveBtn.textContent = 'Generating PDF...';
+            saveBtn.disabled = true;
+            
+            // Generate estimate preview HTML
+            this.generateEstimatePreview(estimateData);
+            const estimateElement = document.getElementById('estimatePreview');
+            
+            // Wait for DOM to update and ensure element is visible
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Make sure the preview modal is visible for html2canvas
+            const modal = document.getElementById('previewModal');
+            modal.style.display = 'block';
+            modal.style.position = 'absolute';
+            modal.style.left = '-9999px';
+            
+            try {
+                // Convert HTML to canvas using html2canvas
+                const canvas = await html2canvas(estimateElement, {
+                    scale: 1.5, // Slightly lower scale for better compatibility
+                    useCORS: true,
+                    allowTaint: true,
+                    backgroundColor: '#ffffff',
+                    logging: false,
+                    removeContainer: true
+                });
+                
+                // Create PDF using jsPDF for A5 size
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF('p', 'mm', 'a5'); // A5 size
+                
+                const imgWidth = 148; // A5 width in mm
+                const pageHeight = 210; // A5 height in mm
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                let heightLeft = imgHeight;
+                let position = 0;
+                
+                // Add image to PDF
+                const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+                
+                // Add additional pages if content is longer than one page
+                while (heightLeft >= 0) {
+                    position = heightLeft - imgHeight;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+                    heightLeft -= pageHeight;
+                }
+            
+            // Generate filename
+                const filename = `Estimate_${estimateData.estimateNumber}_${estimateData.estimateDate}.pdf`;
+                
+                // Download the PDF
+                pdf.save(filename);
+                
+            } finally {
+                // Hide the modal again
+                modal.style.display = 'none';
+                modal.style.position = 'fixed';
+                modal.style.left = 'auto';
+            }
+            
+            // Reset button
+            saveBtn.textContent = originalText;
+            saveBtn.disabled = false;
+            
+        } catch (error) {
+            console.error('Error generating PDF file:', error);
+            
+            // Reset button
+            const saveBtn = document.getElementById('saveBtn');
+            saveBtn.textContent = 'Save Estimate';
+            saveBtn.disabled = false;
+            
+            // Try fallback method
+            console.log('Trying fallback PDF generation method...');
+            try {
+                await this.generatePDFFileFallback(estimateData);
+                return; // Success with fallback
+            } catch (fallbackError) {
+                console.error('Fallback PDF generation also failed:', fallbackError);
+            }
+            
+            // Show specific error message
+            let errorMessage = 'There was an error generating the PDF file, but your estimate has been saved successfully.';
+            
+            if (error.message.includes('jsPDF')) {
+                errorMessage += ' Please refresh the page and try again.';
+            } else if (error.message.includes('html2canvas')) {
+                errorMessage += ' Please try using the "Download PDF" button in the preview modal.';
+            } else {
+                errorMessage += ' Please try using the "Download PDF" button in the preview modal.';
+            }
+            
+            alert(errorMessage);
+        }
+    }
+
+    async generatePDFFileFallback(estimateData) {
+        try {
+            this.generateEstimatePreview(estimateData);
+            
+            const printWindow = window.open('', '_blank');
+            const estimateContent = document.getElementById('estimatePreview').outerHTML;
+            
+            printWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Estimate ${estimateData.estimateNumber}</title>
+                    <link rel="stylesheet" href="styles.css">
+                    <style>
+                       body { background: #fff !important; }
+                       .print-template {
+                           border: none !important;
+                           box-shadow: none !important;
+                       }
+                    </style>
+                </head>
+                <body>
+                    ${estimateContent}
+                </body>
+                </html>
+            `);
+            
+            printWindow.document.close();
+            
+            setTimeout(() => {
+                printWindow.focus();
+                printWindow.print();
+                printWindow.close();
+            }, 500);
+            
+        } catch (error) {
+            console.error('Error in fallback PDF generation:', error);
+            alert('PDF generation failed. Please use your browser\'s "Print to PDF" option from the preview modal.');
+        }
+    }
+
+    printSavedEstimate() {
+        this.generateEstimatePreview(this.currentEstimate);
         this.closeSaveSuccessModal();
         
-        // Create a new window for printing
         const printWindow = window.open('', '_blank');
-        const invoiceContent = document.getElementById('invoicePreview').innerHTML;
+        const estimateContent = document.getElementById('estimatePreview').outerHTML;
         
         printWindow.document.write(`
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Invoice ${this.currentInvoice.invoiceNumber}</title>
+                <title>Estimate ${this.currentEstimate.estimateNumber}</title>
+                <link rel="stylesheet" href="styles.css">
                 <style>
-                    body { font-family: Arial, sans-serif; margin: 20px; }
-                    .invoice-header { display: flex; justify-content: space-between; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
-                    .invoice-title { font-size: 2rem; color: #333; margin: 0; }
-                    .invoice-info { text-align: right; }
-                    .invoice-parties { display: flex; justify-content: space-between; margin-bottom: 30px; }
-                    .party-info h3 { color: #333; margin-bottom: 10px; }
-                    .invoice-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-                    .invoice-table th, .invoice-table td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
-                    .invoice-table th { background: #f5f5f5; font-weight: bold; }
-                    .text-right { text-align: right; }
-                    .invoice-totals { margin-left: auto; width: 300px; }
-                    .total-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #ddd; }
-                    .total-row.final { font-weight: bold; font-size: 1.2rem; border-bottom: 2px solid #333; }
+                   /* Override styles for clean printing */
+                   body { background: #fff !important; }
+                   .print-template {
+                       border: none !important;
+                       box-shadow: none !important;
+                       margin: 0;
+                       padding: 0;
+                   }
                 </style>
             </head>
             <body>
-                ${invoiceContent}
+                ${estimateContent}
             </body>
             </html>
         `);
         
         printWindow.document.close();
+
+        setTimeout(() => {
         printWindow.focus();
         printWindow.print();
         printWindow.close();
+        }, 500);
     }
 
-    createNewInvoice() {
+    createNewEstimate() {
         this.closeSaveSuccessModal();
         this.clearForm();
-        this.generateInvoiceNumber();
+        this.generateEstimateNumber();
         this.switchTab('create');
     }
 
@@ -454,7 +642,7 @@ class InvoiceGenerator {
     clearForm() {
         // Clear all form fields
         document.querySelectorAll('input, textarea').forEach(field => {
-            if (field.id !== 'invoiceNumber') {
+            if (field.id !== 'estimateNumber') {
                 field.value = '';
             }
         });
@@ -467,6 +655,14 @@ class InvoiceGenerator {
         this.setDefaultDates();
         this.addInitialItem();
         this.calculateTotals();
+        
+        // Reset edit mode
+        this.isEditMode = false;
+        this.editingEstimateNumber = null;
+        
+        // Reset button text
+        const saveBtn = document.getElementById('saveBtn');
+        saveBtn.textContent = 'Save Estimate';
     }
 
     closeModal() {
@@ -477,107 +673,177 @@ class InvoiceGenerator {
         document.getElementById('saveSuccessModal').style.display = 'none';
     }
 
-    printInvoice() {
-        window.print();
+    printEstimate() {
+        this.generateEstimatePreview(this.currentEstimate);
+        const printWindow = window.open('', '_blank');
+        const estimateContent = document.getElementById('estimatePreview').outerHTML;
+        
+        printWindow.document.write(`
+             <!DOCTYPE html>
+             <html>
+             <head>
+                <title>Estimate</title>
+                <link rel="stylesheet" href="styles.css">
+                <style>
+                   body { background: #fff !important; }
+                   .print-template {
+                       border: none !important;
+                       box-shadow: none !important;
+                   }
+                </style>
+             </head>
+             <body>
+                ${estimateContent}
+             </body>
+             </html>
+        `);
+        
+        printWindow.document.close();
+
+        setTimeout(() => {
+            printWindow.focus();
+            printWindow.print();
+            printWindow.close();
+        }, 500);
     }
 
-    downloadPDF() {
-        // For a simple implementation, we'll use the browser's print to PDF functionality
-        alert('Use your browser\'s "Print to PDF" option to save the invoice as PDF.');
-        window.print();
+    async downloadPDF() {
+        // Generate PDF for the current preview estimate
+        if (this.currentEstimate && Object.keys(this.currentEstimate).length > 0) {
+            try {
+                await this.generatePDFFile(this.currentEstimate);
+            } catch (error) {
+                console.error('Primary PDF generation failed, trying fallback:', error);
+                try {
+                    await this.generatePDFFileFallback(this.currentEstimate);
+                } catch (fallbackError) {
+                    console.error('Fallback PDF generation also failed:', fallbackError);
+                    alert('PDF generation failed. Please use your browser\'s "Print to PDF" option.');
+                }
+            }
+        } else {
+            alert('No estimate data available for PDF download.');
+        }
     }
 
     updateHistoryDisplay() {
-        this.displayInvoices(this.invoices);
+        this.displayEstimates(this.estimates);
         this.updateStats();
     }
 
-    displayInvoices(invoices) {
+    displayEstimates(estimates) {
         const historyList = document.getElementById('historyList');
         
-        if (invoices.length === 0) {
-            historyList.innerHTML = '<p style="text-align: center; color: #4a5568; padding: 40px;">No invoices found.</p>';
+        if (estimates.length === 0) {
+            historyList.innerHTML = '<p style="text-align: center; color: #4a5568; padding: 40px;">No estimates found.</p>';
             return;
         }
         
-        historyList.innerHTML = invoices.map(invoice => `
+        historyList.innerHTML = estimates.map(estimate => `
             <div class="history-item">
                 <div class="history-item-header">
-                    <span class="invoice-number">${invoice.invoiceNumber}</span>
-                    <span class="invoice-total">$${invoice.total.toFixed(2)}</span>
+                    <span class="estimate-number">${estimate.estimateNumber}</span>
+                    <span class="estimate-total">Rs. ${estimate.total.toFixed(2)}</span>
                 </div>
                 <div class="history-item-details">
-                    <div><strong>Client:</strong> ${invoice.clientInfo.name}</div>
-                    <div><strong>Date:</strong> ${this.formatDate(invoice.invoiceDate)}</div>
-                    <div><strong>Due:</strong> ${this.formatDate(invoice.dueDate)}</div>
-                    <div><strong>Items:</strong> ${invoice.items.length}</div>
+                    <div><strong>Client:</strong> ${estimate.clientInfo.name}</div>
+                    <div><strong>Date:</strong> ${this.formatDate(estimate.estimateDate)}</div>
+                    <div><strong>Items:</strong> ${estimate.items.length}</div>
                 </div>
                 <div class="history-item-actions">
-                    <button class="btn btn-primary btn-small" onclick="invoiceGen.viewInvoice('${invoice.invoiceNumber}')">View</button>
-                    <button class="btn btn-secondary btn-small" onclick="invoiceGen.duplicateInvoice('${invoice.invoiceNumber}')">Duplicate</button>
-                    <button class="btn btn-outline btn-small" onclick="invoiceGen.deleteInvoice('${invoice.invoiceNumber}')">Delete</button>
+                    <button class="btn btn-primary btn-small" onclick="estimateGen.viewEstimate('${estimate.estimateNumber}')">View</button>
+                    <button class="btn btn-secondary btn-small" onclick="estimateGen.editEstimate('${estimate.estimateNumber}')">Edit</button>
+                    <button class="btn btn-secondary btn-small" onclick="estimateGen.duplicateEstimate('${estimate.estimateNumber}')">Duplicate</button>
+                    <button class="btn btn-outline btn-small" onclick="estimateGen.deleteEstimate('${estimate.estimateNumber}')">Delete</button>
                 </div>
             </div>
         `).join('');
     }
 
-    updateStats() {
-        const totalInvoices = this.invoices.length;
-        const totalRevenue = this.invoices.reduce((sum, inv) => sum + inv.total, 0);
-        const avgInvoice = totalInvoices > 0 ? totalRevenue / totalInvoices : 0;
-        
-        document.getElementById('totalInvoices').textContent = totalInvoices;
-        document.getElementById('totalRevenue').textContent = `$${totalRevenue.toFixed(2)}`;
-        document.getElementById('avgInvoice').textContent = `$${avgInvoice.toFixed(2)}`;
+    formatDate(dateStr) {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString();
     }
 
-    searchInvoices(query) {
-        if (!query.trim()) {
-            this.displayInvoices(this.invoices);
-            return;
-        }
-        
-        const filtered = this.invoices.filter(invoice => 
-            invoice.invoiceNumber.toLowerCase().includes(query.toLowerCase()) ||
-            invoice.clientInfo.name.toLowerCase().includes(query.toLowerCase()) ||
-            invoice.businessInfo.name.toLowerCase().includes(query.toLowerCase())
-        );
-        
-        this.displayInvoices(filtered);
-    }
-
-    viewInvoice(invoiceNumber) {
-        const invoice = this.invoices.find(inv => inv.invoiceNumber === invoiceNumber);
-        if (invoice) {
-            this.generateInvoicePreview(invoice);
+    viewEstimate(estimateNumber) {
+        const estimate = this.estimates.find(est => est.estimateNumber === estimateNumber);
+        if (estimate) {
+            this.generateEstimatePreview(estimate);
             document.getElementById('previewModal').style.display = 'block';
         }
     }
 
-    duplicateInvoice(invoiceNumber) {
-        const invoice = this.invoices.find(inv => inv.invoiceNumber === invoiceNumber);
-        if (invoice) {
+    updateStats() {
+        const totalEstimates = this.estimates.length;
+        const totalRevenue = this.estimates.reduce((sum, est) => sum + est.total, 0);
+        
+        // Calculate this month revenue
+        const now = new Date();
+        const thisMonth = now.getMonth();
+        const thisYear = now.getFullYear();
+        
+        const thisMonthRevenue = this.estimates.reduce((sum, est) => {
+            const estimateDate = new Date(est.estimateDate);
+            if (estimateDate.getMonth() === thisMonth && estimateDate.getFullYear() === thisYear) {
+                return sum + est.total;
+            }
+            return sum;
+        }, 0);
+        
+        // Calculate this year revenue
+        const thisYearRevenue = this.estimates.reduce((sum, est) => {
+            const estimateDate = new Date(est.estimateDate);
+            if (estimateDate.getFullYear() === thisYear) {
+                return sum + est.total;
+            }
+            return sum;
+        }, 0);
+        
+        document.getElementById('totalEstimates').textContent = totalEstimates;
+        document.getElementById('totalRevenue').textContent = `Rs. ${totalRevenue.toFixed(2)}`;
+        document.getElementById('thisMonthRevenue').textContent = `Rs. ${thisMonthRevenue.toFixed(2)}`;
+        document.getElementById('thisYearRevenue').textContent = `Rs. ${thisYearRevenue.toFixed(2)}`;
+    }
+
+    searchEstimates(query) {
+        if (!query.trim()) {
+            this.displayEstimates(this.estimates);
+            return;
+        }
+        
+        const filtered = this.estimates.filter(estimate => 
+            estimate.estimateNumber.toLowerCase().includes(query.toLowerCase()) ||
+            estimate.clientInfo.name.toLowerCase().includes(query.toLowerCase()) ||
+            estimate.businessInfo.name.toLowerCase().includes(query.toLowerCase())
+        );
+        
+        this.displayEstimates(filtered);
+    }
+
+    duplicateEstimate(estimateNumber) {
+        const estimate = this.estimates.find(est => est.estimateNumber === estimateNumber);
+        if (estimate) {
             // Switch to create tab
             this.switchTab('create');
             
-            // Fill form with invoice data
-            document.getElementById('businessName').value = invoice.businessInfo.name;
-            document.getElementById('businessEmail').value = invoice.businessInfo.email;
-            document.getElementById('businessPhone').value = invoice.businessInfo.phone;
-            document.getElementById('businessAddress').value = invoice.businessInfo.address;
+            // Fill form with estimate data
+            document.getElementById('businessName').value = estimate.businessInfo.name;
+            document.getElementById('businessEmail').value = estimate.businessInfo.email;
+            document.getElementById('businessPhone').value = estimate.businessInfo.phone;
+            document.getElementById('businessAddress').value = estimate.businessInfo.address;
             
-            document.getElementById('clientName').value = invoice.clientInfo.name;
-            document.getElementById('clientEmail').value = invoice.clientInfo.email;
-            document.getElementById('clientPhone').value = invoice.clientInfo.phone;
-            document.getElementById('clientAddress').value = invoice.clientInfo.address;
+            document.getElementById('clientName').value = estimate.clientInfo.name;
+            document.getElementById('clientPhone').value = estimate.clientInfo.phone;
+            document.getElementById('clientAddress').value = estimate.clientInfo.address;
             
-            document.getElementById('taxRate').value = invoice.taxRate;
+            document.getElementById('taxRate').value = estimate.taxRate;
+            document.getElementById('discountAmountInput').value = estimate.discountAmount || 0;
             
-            // Clear existing items and add invoice items
+            // Clear existing items and add estimate items
             document.getElementById('itemsList').innerHTML = '';
             this.itemCounter = 0;
             
-            invoice.items.forEach(item => {
+            estimate.items.forEach(item => {
                 this.addItem();
                 const lastItem = document.querySelector('.item-row:last-child');
                 lastItem.querySelector('.item-description').value = item.description;
@@ -586,72 +852,124 @@ class InvoiceGenerator {
                 this.calculateItemAmount(lastItem);
             });
             
-            // Generate new invoice number
-            this.generateInvoiceNumber();
+            // Generate new estimate number
+            this.generateEstimateNumber();
             this.setDefaultDates();
         }
     }
 
-    deleteInvoice(invoiceNumber) {
-        if (confirm('Are you sure you want to delete this invoice? This action cannot be undone.')) {
-            this.invoices = this.invoices.filter(inv => inv.invoiceNumber !== invoiceNumber);
-            localStorage.setItem('invoices', JSON.stringify(this.invoices));
-            this.updateHistoryDisplay();
+    editEstimate(estimateNumber) {
+        const estimate = this.estimates.find(est => est.estimateNumber === estimateNumber);
+        if (estimate) {
+            // Switch to create tab
+            this.switchTab('create');
+            
+            // Set edit mode
+            this.isEditMode = true;
+            this.editingEstimateNumber = estimateNumber;
+            
+            // Fill form with estimate data
+            document.getElementById('businessName').value = estimate.businessInfo.name;
+            document.getElementById('businessEmail').value = estimate.businessInfo.email;
+            document.getElementById('businessPhone').value = estimate.businessInfo.phone;
+            document.getElementById('businessAddress').value = estimate.businessInfo.address;
+            
+            document.getElementById('clientName').value = estimate.clientInfo.name;
+            document.getElementById('clientPhone').value = estimate.clientInfo.phone;
+            document.getElementById('clientAddress').value = estimate.clientInfo.address;
+            
+            document.getElementById('estimateDate').value = estimate.estimateDate;
+            document.getElementById('taxRate').value = estimate.taxRate;
+            document.getElementById('discountAmountInput').value = estimate.discountAmount || 0;
+            
+            // Clear existing items and add estimate items
+            document.getElementById('itemsList').innerHTML = '';
+            this.itemCounter = 0;
+            
+            estimate.items.forEach(item => {
+                this.addItem();
+                const lastItem = document.querySelector('.item-row:last-child');
+                lastItem.querySelector('.item-description').value = item.description;
+                lastItem.querySelector('.item-quantity').value = item.quantity;
+                lastItem.querySelector('.item-rate').value = item.rate;
+                this.calculateItemAmount(lastItem);
+            });
+            
+            // Update button text to indicate edit mode
+            const saveBtn = document.getElementById('saveBtn');
+            saveBtn.textContent = 'Update Estimate';
+            
+            // Scroll to top of form
+            document.querySelector('.estimate-form').scrollIntoView({ behavior: 'smooth' });
         }
     }
 
-    exportAllInvoices() {
-        if (this.invoices.length === 0) {
-            alert('No invoices to export.');
+    deleteEstimate(estimateNumber) {
+        if (confirm('Are you sure you want to delete this estimate? This action cannot be undone.')) {
+            this.estimates = this.estimates.filter(est => est.estimateNumber !== estimateNumber);
+            localStorage.setItem('estimates', JSON.stringify(this.estimates));
+            this.updateHistoryDisplay();
+            
+            // Update Excel structure after deletion
+            this.updateExcelStructure();
+        }
+    }
+
+    exportAllEstimates() {
+        if (this.estimates.length === 0) {
+            alert('No estimates to export.');
             return;
         }
         
-        this.generateAllInvoicesExcel();
+        this.updateExcelStructure();
     }
 
-    async generateAllInvoicesExcel() {
+    async updateExcelStructure() {
         try {
+            // Create a new workbook
             const wb = XLSX.utils.book_new();
             
-            // Create summary sheet
+            // Create summary sheet with all estimates
             const summaryData = [
-                ['Invoice Number', 'Date', 'Due Date', 'Business Name', 'Client Name', 'Client Email', 'Subtotal', 'Tax Rate', 'Tax Amount', 'Total', 'Items Count']
+                ['Estimate Number', 'Date', 'Business Name', 'Client Name', 'Client Phone', 'Subtotal', 'Tax Rate', 'Tax Amount', 'Discount Amount', 'Total', 'Items Count', 'Created At']
             ];
             
-            this.invoices.forEach(invoice => {
+            this.estimates.forEach(estimate => {
                 summaryData.push([
-                    invoice.invoiceNumber,
-                    invoice.invoiceDate,
-                    invoice.dueDate,
-                    invoice.businessInfo.name,
-                    invoice.clientInfo.name,
-                    invoice.clientInfo.email,
-                    invoice.subtotal.toFixed(2),
-                    invoice.taxRate,
-                    invoice.taxAmount.toFixed(2),
-                    invoice.total.toFixed(2),
-                    invoice.items.length
+                    estimate.estimateNumber,
+                    estimate.estimateDate,
+                    estimate.businessInfo.name,
+                    estimate.clientInfo.name,
+                    estimate.clientInfo.phone || '',
+                    estimate.subtotal.toFixed(2),
+                    estimate.taxRate,
+                    estimate.taxAmount.toFixed(2),
+                    estimate.discountAmount || 0,
+                    estimate.total.toFixed(2),
+                    estimate.items.length,
+                    this.formatDate(estimate.createdAt)
                 ]);
             });
             
             const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
-            XLSX.utils.book_append_sheet(wb, summaryWs, 'All Invoices Summary');
+            XLSX.utils.book_append_sheet(wb, summaryWs, 'All Estimates Summary');
             
-            // Create detailed items sheet
+            // Create detailed items sheet with all items from all estimates
             const itemsData = [
-                ['Invoice Number', 'Item Description', 'Quantity', 'Rate', 'Total Amount', 'Invoice Date', 'Client Name']
+                ['Estimate Number', 'Item Description', 'Quantity', 'Rate', 'Total Amount', 'Estimate Date', 'Client Name', 'Business Name']
             ];
             
-            this.invoices.forEach(invoice => {
-                invoice.items.forEach(item => {
+            this.estimates.forEach(estimate => {
+                estimate.items.forEach(item => {
                     itemsData.push([
-                        invoice.invoiceNumber,
+                        estimate.estimateNumber,
                         item.description,
                         item.quantity,
                         item.rate.toFixed(2),
                         item.amount.toFixed(2),
-                        invoice.invoiceDate,
-                        invoice.clientInfo.name
+                        estimate.estimateDate,
+                        estimate.clientInfo.name,
+                        estimate.businessInfo.name
                     ]);
                 });
             });
@@ -659,15 +977,85 @@ class InvoiceGenerator {
             const itemsWs = XLSX.utils.aoa_to_sheet(itemsData);
             XLSX.utils.book_append_sheet(wb, itemsWs, 'All Items Detail');
             
-            // Generate filename
-            const filename = `All_Invoices_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+            // Create business information sheet
+            const businessData = [
+                ['Business Name', 'Email', 'Phone', 'Address', 'Total Estimates', 'Total Revenue']
+            ];
+            
+            // Group by business
+            const businessMap = new Map();
+            this.estimates.forEach(estimate => {
+                const businessKey = estimate.businessInfo.name;
+                if (!businessMap.has(businessKey)) {
+                    businessMap.set(businessKey, {
+                        ...estimate.businessInfo,
+                        totalEstimates: 0,
+                        totalRevenue: 0
+                    });
+                }
+                const business = businessMap.get(businessKey);
+                business.totalEstimates++;
+                business.totalRevenue += estimate.total;
+            });
+            
+            businessMap.forEach(business => {
+                businessData.push([
+                    business.name,
+                    business.email,
+                    business.phone,
+                    business.address,
+                    business.totalEstimates,
+                    business.totalRevenue.toFixed(2)
+                ]);
+            });
+            
+            const businessWs = XLSX.utils.aoa_to_sheet(businessData);
+            XLSX.utils.book_append_sheet(wb, businessWs, 'Business Information');
+            
+            // Create client information sheet
+            const clientData = [
+                ['Client Name', 'Phone', 'Address', 'Total Estimates', 'Total Amount']
+            ];
+            
+            // Group by client
+            const clientMap = new Map();
+            this.estimates.forEach(estimate => {
+                const clientKey = estimate.clientInfo.name;
+                if (!clientMap.has(clientKey)) {
+                    clientMap.set(clientKey, {
+                        ...estimate.clientInfo,
+                        totalEstimates: 0,
+                        totalAmount: 0
+                    });
+                }
+                const client = clientMap.get(clientKey);
+                client.totalEstimates++;
+                client.totalAmount += estimate.total;
+            });
+            
+            clientMap.forEach(client => {
+                clientData.push([
+                    client.name,
+                    client.phone || '',
+                    client.address || '',
+                    client.totalEstimates,
+                    client.totalAmount.toFixed(2)
+                ]);
+            });
+            
+            const clientWs = XLSX.utils.aoa_to_sheet(clientData);
+            XLSX.utils.book_append_sheet(wb, clientWs, 'Client Information');
+            
+            // Generate filename with timestamp
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+            const filename = `Estimate_Database_${timestamp}.xlsx`;
             
             // Write and download the file
             XLSX.writeFile(wb, filename);
             
         } catch (error) {
-            console.error('Error generating Excel export:', error);
-            alert('There was an error generating the Excel export file.');
+            console.error('Error updating Excel structure:', error);
+            // Don't show alert as this is a background process
         }
     }
 
@@ -682,4 +1070,4 @@ class InvoiceGenerator {
 }
 
 // Initialize the application
-const invoiceGen = new InvoiceGenerator();
+const estimateGen = new EstimateGenerator();
